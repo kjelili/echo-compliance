@@ -73,7 +73,13 @@ async function fetchWithApiFallback(path, options = {}) {
 
   for (let index = 0; index < apiBases.length; index += 1) {
     const base = apiBases[index];
-    const response = await fetch(`${base}${path}`, options);
+    let response;
+    try {
+      response = await fetch(`${base}${path}`, options);
+    } catch (error) {
+      lastError = error?.message || "Network request failed";
+      continue;
+    }
     if (response.ok) {
       return response;
     }
@@ -92,7 +98,13 @@ async function fetchWithApiFallback(path, options = {}) {
     break;
   }
 
-  throw new Error(lastError);
+  if (/NOT_FOUND/i.test(lastError)) {
+    throw new Error("Backend API is not available for this deployment yet.");
+  }
+  if (/Failed to fetch|Network request failed/i.test(lastError)) {
+    throw new Error("Could not reach backend API. Check deployment URL and network.");
+  }
+  throw new Error(lastError || "Request failed");
 }
 
 export async function createLog(payload) {

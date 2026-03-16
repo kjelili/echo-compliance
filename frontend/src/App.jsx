@@ -24,6 +24,7 @@ import {
 } from "./services/api";
 
 const SEARCH_DEBOUNCE_MS = 250;
+const API_UNAVAILABLE_MESSAGE = "Backend API is not available for this deployment yet.";
 
 export default function App() {
   const [logs, setLogs] = useState([]);
@@ -42,13 +43,19 @@ export default function App() {
   const [actionView, setActionView] = useState("all");
   const actionBoardRef = useRef(null);
 
+  function shouldSilenceBootstrapError(message = "") {
+    return message.includes(API_UNAVAILABLE_MESSAGE);
+  }
+
   useEffect(() => {
     const timeout = setTimeout(async () => {
       try {
         const data = await fetchLogs(search);
         setLogs(data.logs ?? []);
       } catch (fetchError) {
-        setError(fetchError.message);
+        if (!shouldSilenceBootstrapError(fetchError.message)) {
+          setError(fetchError.message);
+        }
       }
     }, SEARCH_DEBOUNCE_MS);
 
@@ -98,7 +105,9 @@ export default function App() {
         setToolboxTalk(toolboxResult);
         setCompliancePulse(pulseResult);
       } catch (loadError) {
-        setError(loadError.message);
+        if (!shouldSilenceBootstrapError(loadError.message)) {
+          setError(loadError.message);
+        }
       }
     };
 
@@ -111,7 +120,9 @@ export default function App() {
         const result = await fetchInsights();
         setInsights(result);
       } catch (loadError) {
-        setError(loadError.message);
+        if (!shouldSilenceBootstrapError(loadError.message)) {
+          setError(loadError.message);
+        }
       }
     };
 
