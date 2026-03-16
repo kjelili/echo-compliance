@@ -1,0 +1,20 @@
+{
+  "name": "echo-compliance-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "build": "node --check src/server.js",
+    "test": "node src/smoke-test.js && node src/compliance-pulse-core-test.js && node src/compliance-pulse-trends-test.js && node src/site-assist-endpoints-test.js && node src/actions-guardrails-test.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.1",
+    "multer": "^2.0.2",
+    "pdfkit": "^0.15.1",
+    "redis": "^5.11.0",
+    "uuid": "^11.0.3"
+  }
+}

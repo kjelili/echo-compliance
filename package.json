@@ -1,0 +1,15 @@
+{
+  "name": "echo-compliance",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend",
+    "remotion-demo"
+  ],
+  "scripts": {
+    "install:all": "npm install --workspaces",
+    "build": "npm run build -w frontend && npm run build -w backend && npm run build -w remotion-demo",
+    "verify": "npm run lint -w frontend && npm run test -w backend && npm run build"
+  }
+}
