@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import ActionBoard from "./components/ActionBoard";
 import CompliancePulsePanel from "./components/CompliancePulsePanel";
+import DataOwnershipPanel from "./components/DataOwnershipPanel";
 import HistoryList from "./components/HistoryList";
 import LandingHero from "./components/LandingHero";
 import LogForm from "./components/LogForm";
@@ -9,7 +10,10 @@ import SiteAssistPanel from "./components/SiteAssistPanel";
 import StructuredReport from "./components/StructuredReport";
 import {
   acknowledgeCriticalActions,
+  connectCloudStorageFile,
   createLog,
+  disconnectCloudStorageFile,
+  exportLocalBackupFile,
   exportPdf,
   fetchActions,
   fetchCompliancePulse,
@@ -22,6 +26,7 @@ import {
   fetchToolboxTalk,
   updateAction
 } from "./services/api";
+import { getStorageStatus, importLocalBackupFile, syncCloudStorageFile } from "./services/api";
 
 const SEARCH_DEBOUNCE_MS = 250;
 const API_UNAVAILABLE_MESSAGE = "Backend API is not available for this deployment yet.";
@@ -38,6 +43,12 @@ export default function App() {
   const [toolboxTalk, setToolboxTalk] = useState(null);
   const [insights, setInsights] = useState(null);
   const [compliancePulse, setCompliancePulse] = useState(null);
+  const [storageStatus, setStorageStatus] = useState({
+    mode: "local-first",
+    cloudSyncSupported: false,
+    cloudConnected: false,
+    lastSyncedAt: ""
+  });
   const [highlightedActionId, setHighlightedActionId] = useState("");
   const [showAcknowledged, setShowAcknowledged] = useState(false);
   const [actionView, setActionView] = useState("all");
@@ -115,6 +126,14 @@ export default function App() {
   }, [activeSiteName]);
 
   useEffect(() => {
+    const loadStorageStatus = async () => {
+      const status = await getStorageStatus();
+      setStorageStatus(status);
+    };
+    loadStorageStatus();
+  }, []);
+
+  useEffect(() => {
     const loadInsights = async () => {
       try {
         const result = await fetchInsights();
@@ -136,6 +155,8 @@ export default function App() {
       await createLog(payload);
       const data = await fetchLogs(search);
       setLogs(data.logs ?? []);
+      const status = await getStorageStatus();
+      setStorageStatus(status);
       setToast("Structured log created.");
     } catch (submitError) {
       setError(submitError.message);
@@ -186,6 +207,8 @@ export default function App() {
       ]);
       setActions(actionsResult.actions ?? []);
       setLogs(logsResult.logs ?? []);
+      const status = await getStorageStatus();
+      setStorageStatus(status);
       setToast("Action updated.");
     } catch (updateError) {
       setError(updateError.message);
@@ -248,6 +271,8 @@ export default function App() {
       await updateAction(actionId, { escalationAcknowledged: true });
       const actionsResult = await fetchActions({ siteName: activeSiteName });
       setActions(actionsResult.actions ?? []);
+      const status = await getStorageStatus();
+      setStorageStatus(status);
       setToast("Escalation acknowledged.");
     } catch (ackError) {
       setError(ackError.message);
@@ -264,6 +289,8 @@ export default function App() {
       const result = await acknowledgeCriticalActions(activeSiteName);
       const actionsResult = await fetchActions({ siteName: activeSiteName });
       setActions(actionsResult.actions ?? []);
+      const status = await getStorageStatus();
+      setStorageStatus(status);
       setToast(
         result.updatedCount > 0
           ? `${result.updatedCount} critical escalation(s) acknowledged.`
@@ -271,6 +298,67 @@ export default function App() {
       );
     } catch (ackError) {
       setError(ackError.message);
+    }
+  }
+
+  async function handleConnectCloudFile() {
+    try {
+      setError("");
+      const status = await connectCloudStorageFile();
+      setStorageStatus(status);
+      const data = await fetchLogs(search);
+      setLogs(data.logs ?? []);
+      setToast("Drive file connected.");
+    } catch (connectError) {
+      setError(connectError.message);
+    }
+  }
+
+  async function handleSyncCloudFile() {
+    try {
+      setError("");
+      const status = await syncCloudStorageFile();
+      setStorageStatus(status);
+      setToast("Cloud file synced.");
+    } catch (syncError) {
+      setError(syncError.message);
+    }
+  }
+
+  async function handleDisconnectCloudFile() {
+    try {
+      setError("");
+      const status = await disconnectCloudStorageFile();
+      setStorageStatus(status);
+      setToast("Cloud file disconnected.");
+    } catch (disconnectError) {
+      setError(disconnectError.message);
+    }
+  }
+
+  async function handleExportBackup() {
+    try {
+      setError("");
+      await exportLocalBackupFile();
+      setToast("Backup exported.");
+    } catch (backupError) {
+      setError(backupError.message);
+    }
+  }
+
+  async function handleImportBackup(file) {
+    if (!file) {
+      return;
+    }
+    try {
+      setError("");
+      const result = await importLocalBackupFile(file);
+      const [logsResult, status] = await Promise.all([fetchLogs(search), getStorageStatus()]);
+      setLogs(logsResult.logs ?? []);
+      setStorageStatus(status);
+      setToast(`Backup imported (${result.importedCount} log(s)).`);
+    } catch (importError) {
+      setError(importError.message);
     }
   }
 
@@ -332,6 +420,14 @@ export default function App() {
 
       <main className="container">
         <LandingHero onGetStarted={() => document.querySelector("form")?.scrollIntoView()} />
+        <DataOwnershipPanel
+          storageStatus={storageStatus}
+          onConnectCloudFile={handleConnectCloudFile}
+          onSyncCloudFile={handleSyncCloudFile}
+          onDisconnectCloudFile={handleDisconnectCloudFile}
+          onExportBackup={handleExportBackup}
+          onImportBackup={handleImportBackup}
+        />
         {error ? <div className="alert">{error}</div> : null}
         {toast ? <div className="toast">{toast}</div> : null}
         {criticalActions.length > 0 ? (
