@@ -1,6 +1,6 @@
 # Echo Compliance
 
-Echo Compliance is a web app MVP for fast construction-site reporting:
+Echo Compliance is a local-first web app for fast construction-site reporting where users own their data by default:
 - voice or text updates
 - AI-structured daily logs
 - photo attachments
@@ -14,23 +14,32 @@ Echo Compliance is a web app MVP for fast construction-site reporting:
 - shift handover and toolbox talk drafts
 - recurring risk insights and quick filters
 - compliance pulse score with 48-hour SLA forecast and evidence gap radar
+- local device storage (no required backend/database)
+- optional user-owned sync file in Google Drive or OneDrive synced folders
 
 ## Project Structure
 - `frontend/` - React UI
-- `backend/` - Express API
+- `backend/` - Express API (optional/legacy deployment mode)
 - `docs/` - requirements and implementation process
 - `remotion-demo/` - demo video composition
 
 ## Quick Start
 1. Install dependencies:
    - `npm run install:all`
-2. Start backend:
-   - `npm run dev -w backend`
-3. Start frontend:
+2. Start frontend:
    - `npm run dev -w frontend`
-4. Open:
+3. Open:
    - frontend: `http://localhost:5173`
-   - backend health: `http://localhost:4000/api/health`
+
+### Local-first mode (default)
+- App features run in-browser and persist to local device storage.
+- No backend/API/database is required to create logs, actions, insights, and exports.
+
+### Optional cloud-backed file sync (user-owned)
+- Use the **Data Ownership** panel in the app.
+- Click **Connect Drive File** and choose a JSON file in your local Google Drive or OneDrive synced folder.
+- Use **Sync Now** to persist the latest state to your chosen file.
+- Use **Export Backup** / **Import Backup** for manual portability.
 
 ## Verification Steps
 1. Backend smoke test:
@@ -60,7 +69,7 @@ Echo Compliance is a web app MVP for fast construction-site reporting:
    - Output Directory: `frontend/dist`
 4. Deploy.
 
-### Notes for Vercel runtime
+### Notes for Vercel runtime (optional backend mode)
 - API routes are served via `api/[...all].js`.
 - Configure Redis for durable storage:
   - `REDIS_URL` (recommended) e.g. `rediss://default:<password>@redis-17105.c325.us-east-1-4.ec2.cloud.redislabs.com:17105`
@@ -69,6 +78,5 @@ Echo Compliance is a web app MVP for fast construction-site reporting:
 
 ## Notes
 - The current AI summarizer is deterministic and local-first.
-- The MVP avoids Streamlit and uses a full web stack.
-- Uploaded photos are stored in `backend/data/uploads`.
-- Logs are persisted in Redis when Redis env vars are present; otherwise the app falls back to `backend/data/logs.json`.
+- The app can operate fully without any external database.
+- Backend + Redis remain available for teams that prefer server-managed deployments.
