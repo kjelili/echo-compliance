@@ -1,14 +1,19 @@
 export default function DataOwnershipPanel({
   storageStatus,
+  auditEvents,
   onConnectCloudFile,
   onSyncCloudFile,
   onDisconnectCloudFile,
   onExportBackup,
-  onImportBackup
+  onImportBackup,
+  onExportEncryptedBackup,
+  onImportEncryptedBackup
 }) {
   const cloudSupported = Boolean(storageStatus?.cloudSyncSupported);
   const cloudConnected = Boolean(storageStatus?.cloudConnected);
   const lastSyncedAt = storageStatus?.lastSyncedAt;
+  const storageUsedMb = ((storageStatus?.usedBytes ?? 0) / (1024 * 1024)).toFixed(2);
+  const storageQuotaMb = ((storageStatus?.quotaBytes ?? 0) / (1024 * 1024)).toFixed(2);
 
   return (
     <section className="panel">
@@ -21,6 +26,12 @@ export default function DataOwnershipPanel({
         <span className="chip">Mode: Local-first</span>
         <span className="chip">{cloudConnected ? "Cloud file connected" : "Cloud file not connected"}</span>
         {lastSyncedAt ? <span className="chip chip--small">Last sync: {new Date(lastSyncedAt).toLocaleString()}</span> : null}
+        <span className="chip chip--small">Logs: {storageStatus?.logsCount ?? 0}</span>
+        <span className="chip chip--small">Audit events: {storageStatus?.auditEventsCount ?? 0}</span>
+        <span className="chip chip--small">
+          Storage: {storageUsedMb} MB / {storageQuotaMb} MB
+          {storageStatus?.usagePercent != null ? ` (${storageStatus.usagePercent}%)` : ""}
+        </span>
       </div>
 
       <div className="actions">
@@ -30,6 +41,20 @@ export default function DataOwnershipPanel({
         <label className="file-upload btn btn--secondary">
           Import Backup
           <input type="file" accept=".json,application/json" onChange={(event) => onImportBackup(event.target.files?.[0])} />
+        </label>
+      </div>
+
+      <div className="actions">
+        <button type="button" className="btn btn--ghost" onClick={onExportEncryptedBackup}>
+          Export Encrypted Backup
+        </button>
+        <label className="file-upload btn btn--secondary">
+          Import Encrypted Backup
+          <input
+            type="file"
+            accept=".json,application/json"
+            onChange={(event) => onImportEncryptedBackup(event.target.files?.[0])}
+          />
         </label>
       </div>
 
@@ -50,6 +75,21 @@ export default function DataOwnershipPanel({
       ) : (
         <p className="hint">Tip: choose a file inside your Google Drive or OneDrive synced folder for user-owned cloud backup.</p>
       )}
+
+      <div>
+        <h4>Recent Audit Trail</h4>
+        {Array.isArray(auditEvents) && auditEvents.length > 0 ? (
+          <ul className="report-list">
+            {auditEvents.map((event) => (
+              <li key={event.id}>
+                {new Date(event.createdAt).toLocaleString()} - {event.message}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="hint">No audit events yet.</p>
+        )}
+      </div>
     </section>
   );
 }

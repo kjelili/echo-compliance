@@ -37,6 +37,18 @@ Introduce differentiated capabilities that move Echo Compliance beyond standard 
   - `attentionZones` analysis in backend pulse output.
   - Frontend chips and recommendations in Compliance Pulse panel.
 
+### 4) Privacy-First Reliability Pack (new niche)
+- What it does:
+  - Keeps data local by default with immutable audit logging.
+  - Adds encrypted backup portability under user-controlled passphrase.
+  - Adds session lock controls and sensitive-content warnings before sharing.
+- Why it stands out:
+  - Combines compliance workflow utility with strong data ownership and safety controls.
+- Implemented components:
+  - Local-first service extensions in `frontend/src/services/localApi.js`.
+  - Security-aware app workflows in `frontend/src/App.jsx`.
+  - Data ownership and audit UX in `frontend/src/components/DataOwnershipPanel.jsx`.
+
 ## Documentation used for implementation
 - Product + architecture baseline:
   - `README.md`
@@ -55,6 +67,9 @@ Introduce differentiated capabilities that move Echo Compliance beyond standard 
 - Aggregation analytics and risk signal design.
 - React state orchestration across multiple asynchronous data sources.
 - Frontend information design for decision-oriented panels.
+- Browser cryptography (`Web Crypto API`) for local encrypted backup.
+- Local-first data reliability design (`localStorage` + sync file patterns).
+- Security UX patterns (session lock, sensitive-data warnings, audit visibility).
 
 ### Domain skills
 - Construction compliance operations (action closure, escalation, evidence rules).

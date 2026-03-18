@@ -1,6 +1,7 @@
 import { jsPDF } from "jspdf";
 
 const LOGS_KEY = "echo-compliance:logs:v2";
+const AUDIT_LOGS_KEY = "echo-compliance:audit:v1";
 
 let cloudFileHandle = null;
 let lastSyncedAt = "";
@@ -25,11 +26,112 @@ function readPersistedLogs() {
   return Array.isArray(parseJsonSafe(raw, [])) ? parseJsonSafe(raw, []) : [];
 }
 
+function readAuditEvents() {
+  if (typeof window === "undefined") {
+    return [];
+  }
+  const raw = window.localStorage.getItem(AUDIT_LOGS_KEY);
+  const parsed = parseJsonSafe(raw, []);
+  return Array.isArray(parsed) ? parsed : [];
+}
+
+function writeAuditEvents(events) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.localStorage.setItem(AUDIT_LOGS_KEY, JSON.stringify(events));
+}
+
+function appendAuditEvent(event) {
+  const events = readAuditEvents();
+  const nextEvents = [
+    {
+      id: crypto.randomUUID(),
+      createdAt: nowIso(),
+      ...event
+    },
+    ...events
+  ].slice(0, 2000);
+  writeAuditEvents(nextEvents);
+}
+
 function writePersistedLogs(logs) {
   if (typeof window === "undefined") {
     return;
   }
   window.localStorage.setItem(LOGS_KEY, JSON.stringify(logs));
+}
+
+function toBase64(bytes) {
+  const chars = [];
+  bytes.forEach((byte) => chars.push(String.fromCharCode(byte)));
+  return btoa(chars.join(""));
+}
+
+function fromBase64(base64) {
+  const text = atob(base64);
+  const bytes = new Uint8Array(text.length);
+  for (let index = 0; index < text.length; index += 1) {
+    bytes[index] = text.charCodeAt(index);
+  }
+  return bytes;
+}
+
+async function deriveEncryptionKey(passphrase, salt) {
+  const encoder = new TextEncoder();
+  const keyMaterial = await window.crypto.subtle.importKey(
+    "raw",
+    encoder.encode(passphrase),
+    "PBKDF2",
+    false,
+    ["deriveKey"]
+  );
+  return window.crypto.subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt,
+      iterations: 250000,
+      hash: "SHA-256"
+    },
+    keyMaterial,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"]
+  );
+}
+
+async function encryptBackupPayload(payload, passphrase) {
+  const encoder = new TextEncoder();
+  const salt = window.crypto.getRandomValues(new Uint8Array(16));
+  const iv = window.crypto.getRandomValues(new Uint8Array(12));
+  const key = await deriveEncryptionKey(passphrase, salt);
+  const encrypted = await window.crypto.subtle.encrypt(
+    { name: "AES-GCM", iv },
+    key,
+    encoder.encode(JSON.stringify(payload))
+  );
+  return {
+    version: 1,
+    encrypted: true,
+    algorithm: "AES-GCM",
+    kdf: "PBKDF2-SHA256",
+    iterations: 250000,
+    salt: toBase64(salt),
+    iv: toBase64(iv),
+    ciphertext: toBase64(new Uint8Array(encrypted)),
+    exportedAt: nowIso()
+  };
+}
+
+async function decryptBackupPayload(encryptedPayload, passphrase) {
+  const key = await deriveEncryptionKey(passphrase, fromBase64(encryptedPayload.salt));
+  const decrypted = await window.crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: fromBase64(encryptedPayload.iv) },
+    key,
+    fromBase64(encryptedPayload.ciphertext)
+  );
+  const decoder = new TextDecoder();
+  return parseJsonSafe(decoder.decode(decrypted), null);
 }
 
 function supportsCloudFileSync() {
@@ -562,6 +664,16 @@ function parsePositiveInt(value, fallback) {
   return Number.isNaN(parsed) || parsed <= 0 ? fallback : parsed;
 }
 
+export function detectSensitiveDataForText(text = "") {
+  const patterns = [
+    { type: "email", regex: /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i },
+    { type: "phone", regex: /\b(?:\+?\d{1,3}[-.\s]?)?(?:\(?\d{2,4}\)?[-.\s]?)\d{3,4}[-.\s]?\d{3,4}\b/ },
+    { type: "national-id", regex: /\b[A-CEGHJ-PR-TW-Z]{2}\d{6}[A-D]\b/i },
+    { type: "bank-account-like", regex: /\b\d{8,20}\b/ }
+  ];
+  return patterns.filter((pattern) => pattern.regex.test(text)).map((pattern) => pattern.type);
+}
+
 export async function createLog(payload) {
   const attachments = (payload.photos ?? []).map((file) => ({
     filename: file.name,
@@ -593,6 +705,11 @@ export async function createLog(payload) {
   newLog.actionItems = createActionItemsForLog(newLog, aiResult.actionTemplates);
   logs.push(newLog);
   writePersistedLogs(logs);
+  appendAuditEvent({
+    type: "log_created",
+    message: `Created daily log for ${payload.siteName}`,
+    siteName: payload.siteName
+  });
   await syncToCloudIfConnected(logs);
   return { log: newLog };
 }
@@ -775,6 +892,11 @@ export async function updateAction(actionId, updates) {
     throw new Error("Action not found.");
   }
   writePersistedLogs(updatedLogs);
+  appendAuditEvent({
+    type: "action_updated",
+    message: `Updated action ${updatedAction.id}`,
+    siteName: updatedLogs.find((log) => (log.actionItems ?? []).some((item) => item.id === updatedAction.id))?.siteName ?? ""
+  });
   await syncToCloudIfConnected(updatedLogs);
   return { action: updatedAction };
 }
@@ -798,6 +920,11 @@ export async function acknowledgeCriticalActions(siteName) {
   });
   if (updatedCount > 0) {
     writePersistedLogs(updatedLogs);
+    appendAuditEvent({
+      type: "critical_acknowledged",
+      message: `Acknowledged ${updatedCount} critical action(s)`,
+      siteName: siteName || "all sites"
+    });
     await syncToCloudIfConnected(updatedLogs);
   }
   return { updatedCount };
@@ -857,11 +984,23 @@ export async function fetchInsights() {
 }
 
 export async function getStorageStatus() {
+  const logs = readPersistedLogs();
+  const events = readAuditEvents();
+  const storageEstimate = typeof navigator !== "undefined" && navigator.storage?.estimate
+    ? await navigator.storage.estimate()
+    : null;
+  const usedBytes = storageEstimate?.usage ?? 0;
+  const quotaBytes = storageEstimate?.quota ?? 0;
   return {
     mode: "local-first",
     cloudSyncSupported: supportsCloudFileSync(),
     cloudConnected: Boolean(cloudFileHandle),
-    lastSyncedAt
+    lastSyncedAt,
+    logsCount: logs.length,
+    auditEventsCount: events.length,
+    usedBytes,
+    quotaBytes,
+    usagePercent: quotaBytes > 0 ? Number(((usedBytes / quotaBytes) * 100).toFixed(2)) : null
   };
 }
 
@@ -888,10 +1027,20 @@ export async function connectCloudStorageFile() {
     const parsed = parseJsonSafe(raw, null);
     if (parsed && Array.isArray(parsed.logs)) {
       writePersistedLogs(parsed.logs);
+      appendAuditEvent({
+        type: "cloud_file_loaded",
+        message: `Loaded ${parsed.logs.length} log(s) from connected cloud file`,
+        siteName: "n/a"
+      });
     }
   } else {
     await writeCloudSnapshot(readPersistedLogs());
   }
+  appendAuditEvent({
+    type: "cloud_file_connected",
+    message: "Connected user-owned cloud storage file",
+    siteName: "n/a"
+  });
   return getStorageStatus();
 }
 
@@ -900,11 +1049,21 @@ export async function syncCloudStorageFile() {
     throw new Error("No cloud storage file connected.");
   }
   await writeCloudSnapshot(readPersistedLogs());
+  appendAuditEvent({
+    type: "cloud_file_synced",
+    message: "Synced local data to connected cloud file",
+    siteName: "n/a"
+  });
   return getStorageStatus();
 }
 
 export async function disconnectCloudStorageFile() {
   cloudFileHandle = null;
+  appendAuditEvent({
+    type: "cloud_file_disconnected",
+    message: "Disconnected cloud storage file handle",
+    siteName: "n/a"
+  });
   return getStorageStatus();
 }
 
@@ -912,6 +1071,28 @@ export async function exportLocalBackupFile() {
   const logs = readPersistedLogs();
   const backup = JSON.stringify({ version: 1, exportedAt: nowIso(), logs }, null, 2);
   triggerDownload(`echo-compliance-backup-${new Date().toISOString().slice(0, 10)}.json`, new Blob([backup], { type: "application/json" }));
+  appendAuditEvent({
+    type: "backup_exported",
+    message: "Exported plain JSON backup",
+    siteName: "n/a"
+  });
+}
+
+export async function exportEncryptedBackupFile(passphrase) {
+  if (!passphrase || passphrase.length < 8) {
+    throw new Error("Passphrase must be at least 8 characters.");
+  }
+  const logs = readPersistedLogs();
+  const payload = await encryptBackupPayload({ version: 1, logs }, passphrase);
+  triggerDownload(
+    `echo-compliance-backup-encrypted-${new Date().toISOString().slice(0, 10)}.json`,
+    new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" })
+  );
+  appendAuditEvent({
+    type: "backup_exported_encrypted",
+    message: "Exported encrypted backup",
+    siteName: "n/a"
+  });
 }
 
 export async function importLocalBackupFile(file) {
@@ -924,6 +1105,42 @@ export async function importLocalBackupFile(file) {
     throw new Error("Invalid backup file format.");
   }
   writePersistedLogs(parsed.logs);
+  appendAuditEvent({
+    type: "backup_imported",
+    message: `Imported plain JSON backup (${parsed.logs.length} logs)`,
+    siteName: "n/a"
+  });
   await syncToCloudIfConnected(parsed.logs);
   return { importedCount: parsed.logs.length };
+}
+
+export async function importEncryptedBackupFile(file, passphrase) {
+  if (!file) {
+    throw new Error("No encrypted backup file selected.");
+  }
+  if (!passphrase || passphrase.length < 8) {
+    throw new Error("Passphrase must be at least 8 characters.");
+  }
+  const raw = await file.text();
+  const parsed = parseJsonSafe(raw, null);
+  if (!parsed || !parsed.encrypted || !parsed.ciphertext || !parsed.iv || !parsed.salt) {
+    throw new Error("Invalid encrypted backup format.");
+  }
+  const decrypted = await decryptBackupPayload(parsed, passphrase);
+  if (!decrypted || !Array.isArray(decrypted.logs)) {
+    throw new Error("Decryption failed or backup payload is invalid.");
+  }
+  writePersistedLogs(decrypted.logs);
+  appendAuditEvent({
+    type: "backup_imported_encrypted",
+    message: `Imported encrypted backup (${decrypted.logs.length} logs)`,
+    siteName: "n/a"
+  });
+  await syncToCloudIfConnected(decrypted.logs);
+  return { importedCount: decrypted.logs.length };
+}
+
+export async function fetchAuditEvents(limit = 30) {
+  const max = Math.max(1, Math.min(200, Number(limit) || 30));
+  return { events: readAuditEvents().slice(0, max) };
 }

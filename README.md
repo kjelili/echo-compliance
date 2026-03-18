@@ -1,5 +1,14 @@
 # Echo Compliance
 
+## About
+
+Echo Compliance is a privacy-first, local-first construction compliance workspace. Teams can capture site updates, generate structured reports, track actions, and export evidence-ready summaries while keeping data on their own devices by default.
+
+The app is designed for user data ownership:
+- no mandatory backend or hosted database
+- optional sync to a user-selected file in Google Drive or OneDrive synced folders
+- encrypted backup/import support with passphrase protection
+
 Echo Compliance is a local-first web app for fast construction-site reporting where users own their data by default:
 - voice or text updates
 - AI-structured daily logs
@@ -16,6 +25,11 @@ Echo Compliance is a local-first web app for fast construction-site reporting wh
 - compliance pulse score with 48-hour SLA forecast and evidence gap radar
 - local device storage (no required backend/database)
 - optional user-owned sync file in Google Drive or OneDrive synced folders
+- encrypted backup export/import with passphrase protection
+- immutable local audit trail for key data operations
+- session PIN lock with configurable idle auto-lock timeout
+- sensitive-data warning prompts before copy/export actions
+- local storage health metrics (usage, quota, record counts)
 
 ## Project Structure
 - `frontend/` - React UI
@@ -80,3 +94,7 @@ Echo Compliance is a local-first web app for fast construction-site reporting wh
 - The current AI summarizer is deterministic and local-first.
 - The app can operate fully without any external database.
 - Backend + Redis remain available for teams that prefer server-managed deployments.
+
+## GitHub About (Suggested)
+- Description: `Privacy-first, local-first construction compliance app with AI-structured logs, action tracking, encrypted backups, and user-owned data sync.`
+- Topics: `local-first`, `privacy-first`, `construction`, `compliance`, `react`, `vite`, `offline-first`, `data-ownership`, `safety`, `reporting`
